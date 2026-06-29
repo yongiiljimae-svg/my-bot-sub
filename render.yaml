@@ -1,0 +1,21 @@
+services:
+  - type: worker
+    name: subsource-notifier
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: SUBSOURCE_API_KEY
+        sync: false
+      - key: TELEGRAM_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: WATCHLIST
+        sync: false
+      - key: CHECK_INTERVAL_MINUTES
+        value: "30"
+      - key: SUBTITLE_LANGUAGE
+        value: "english"
+      - key: CHECK_TIMEZONE
+        value: "Asia/Tehran"
