@@ -40,6 +40,29 @@ def save_seen(seen: set):
         json.dump(list(seen), f)
 
 # ── SubSource API ─────────────────────────────────────────────────────────────
+def fetch_movie_slug(movie_id: int) -> str:
+    """Fetch the URL slug for a movie from the API."""
+    try:
+        r = requests.get(
+            f"{SUBSOURCE_BASE}/movies/{movie_id}",
+            headers=HEADERS,
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json().get("data", {})
+        return data.get("slug", "")
+    except Exception as e:
+        log.error(f"Could not fetch slug for movieId={movie_id}: {e}")
+        return ""
+
+# Cache slugs so we don't re-fetch every 30 min
+_slug_cache: dict = {}
+
+def get_movie_slug(movie_id: int) -> str:
+    if movie_id not in _slug_cache:
+        _slug_cache[movie_id] = fetch_movie_slug(movie_id)
+    return _slug_cache[movie_id]
+
 def fetch_subtitles(movie_id: int, language: str) -> list:
     try:
         r = requests.get(
@@ -72,15 +95,20 @@ def send_telegram(text: str):
 LANG_FLAG = {"english": "🇬🇧", "persian": "🇮🇷"}
 LANG_NAME = {"english": "English", "persian": "فارسی"}
 
-def format_message(movie_title: str, sub: dict) -> str:
+def format_message(movie_title: str, movie_id: int, sub: dict) -> str:
     lang     = sub.get("language", "")
     flag     = LANG_FLAG.get(lang, "🌐")
     lang_lbl = LANG_NAME.get(lang, lang.capitalize())
     release  = " | ".join(sub.get("releaseInfo", [])) or "N/A"
     sub_id   = sub["subtitleId"]
-    link     = f"https://subsource.net/subtitles/{sub_id}"
     downloads = sub.get("downloads", 0)
     good     = sub.get("rating", {}).get("good", 0)
+
+    slug = get_movie_slug(movie_id)
+    if slug:
+        link = f"https://subsource.net/subtitle/{slug}/{lang}/{sub_id}"
+    else:
+        link = f"https://subsource.net/subtitles/{sub_id}"
 
     return (
         f"🎬 <b>New Subtitle Available!</b>\n\n"
@@ -139,7 +167,7 @@ def main():
                     sub_id = sub.get("subtitleId")
                     if sub_id and sub_id not in seen:
                         seen.add(sub_id)
-                        send_telegram(format_message(title, sub))
+                        send_telegram(format_message(title, movie_id, sub))
                         log.info(f"  ✅ New: ID={sub_id}")
                         time.sleep(1)
 
