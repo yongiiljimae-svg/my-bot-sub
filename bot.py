@@ -2,8 +2,10 @@ import os
 import json
 import time
 import logging
+import threading
 import requests
 from datetime import datetime, timezone
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import pytz
 
 # ── Logging ──────────────────────────────────────────────────────────────────
@@ -102,8 +104,28 @@ def should_check(entry: dict, tz: pytz.BaseTzInfo) -> bool:
     hour_ok = entry.get("start", 0) <= now.hour < entry.get("end", 24)
     return day_ok and hour_ok
 
+# ── Dummy HTTP server (keeps Render Web Service happy) ────────────────────────
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"SubSource Notifier is running!")
+
+    def log_message(self, format, *args):
+        pass  # silence HTTP logs
+
+def start_health_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    log.info(f"Health server listening on port {port}")
+    server.serve_forever()
+
 # ── Main loop ─────────────────────────────────────────────────────────────────
 def main():
+    # Start dummy HTTP server in background thread
+    t = threading.Thread(target=start_health_server, daemon=True)
+    t.start()
+
     if not WATCHLIST:
         log.warning("WATCHLIST is empty! Set the WATCHLIST env variable.")
         send_telegram("⚠️ SubSource Bot started but WATCHLIST is empty.\nPlease set the WATCHLIST environment variable.")
